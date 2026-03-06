@@ -94,15 +94,15 @@ jobs:
           echo "ECR_REGISTRY=public.ecr.aws/$REGISTRY_ID" >> .env
           
           # 서버 디렉토리 생성 (없을 경우 대비)
-          ssh -i key.pem "ubuntu @$HOST" "mkdir -p /home/ubuntu/${PROJECT_NAME}-api"
+          ssh -i key.pem ubuntu@$HOST "mkdir -p /home/ubuntu/${PROJECT_NAME}-api"
           
-          # 파일 전송 (ubuntu @$HOST 형식을 정확히 지킴)
-          scp -i key.pem .env "ubuntu @$HOST:/home/ubuntu/${PROJECT_NAME}-api/.env"
-          scp -i key.pem script/docker-deploy.sh "ubuntu @$HOST:/home/ubuntu/${PROJECT_NAME}-api/docker-deploy.sh"
+          # 파일 전송
+          scp -i key.pem .env ubuntu@$HOST:/home/ubuntu/${PROJECT_NAME}-api/.env
+          scp -i key.pem script/docker-deploy.sh ubuntu@$HOST:/home/ubuntu/${PROJECT_NAME}-api/docker-deploy.sh
           
           # 배포 스크립트 실행
-          ssh -i key.pem "ubuntu @$HOST" "chmod +x /home/ubuntu/${PROJECT_NAME}-api/docker-deploy.sh"
-          ssh -i key.pem "ubuntu @$HOST" "cd /home/ubuntu/${PROJECT_NAME}-api && \
+          ssh -i key.pem ubuntu@$HOST "chmod +x /home/ubuntu/${PROJECT_NAME}-api/docker-deploy.sh"
+          ssh -i key.pem ubuntu@$HOST "cd /home/ubuntu/${PROJECT_NAME}-api && \
             PROJECT_NAME=$PROJECT_NAME \
             IMAGE_TAG=$LATEST_TAG \
             ./docker-deploy.sh"
