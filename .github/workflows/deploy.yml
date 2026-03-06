@@ -1,0 +1,108 @@
+name: Docker - Build and Deploy (BeyondU)
+
+on:
+ push:
+   branches: [ "main" ]
+ workflow_dispatch:
+    inputs:
+      tag:
+        description: 'are you ready to deploy?'
+        required: true
+        default: 'yes'
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+    environment: Ren
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 1. AWS 인증 (Secrets 사용)
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR Public
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
+      # 2. Docker 이미지 빌드 및 푸시
+      # (이 프로젝트는 Python 프로젝트이므로 별도의 컴파일 과정 없이 바로 빌드합니다)
+      - name: Build and push image
+        env:
+          ECR_REGISTRY: public.ecr.aws/${{ vars.ECR_PUBLIC_REGISTRY_ID }}
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker buildx create --use --name beyondu-builder
+          docker buildx build \
+            --platform linux/arm64 \
+            --push \
+            --provenance=false \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            -t $ECR_REGISTRY/yourssu/$PROJECT_NAME:$IMAGE_TAG \
+            -t $ECR_REGISTRY/yourssu/$PROJECT_NAME:latest \
+            .
+
+      # 3. 서버 배포
+      - name: Deploy to EC2
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          HOST: ${{ secrets.EC2_STG_HOST }}
+          
+          # 슬랙 앱 환경 변수
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_APP_TOKEN: ${{ secrets.SLACK_APP_TOKEN }}
+          TARGET_CHANNEL_ID: ${{ vars.TARGET_CHANNEL_ID }}
+
+          PROJECT_NAME: ${{ vars.PROJECT_NAME }}
+          REGISTRY_ID: ${{ vars.ECR_PUBLIC_REGISTRY_ID }}
+        run: |
+          mkdir -p ~/.ssh
+          LATEST_TAG=$(aws ecr-public describe-images \
+            --repository-name yourssu/$PROJECT_NAME \
+            --region us-east-1 \
+            --query 'sort_by(imageDetails, &imagePushedAt)[-1].imageTags[0]' \
+            --output text)
+          
+          echo "Found latest tag in ECR: $LATEST_TAG"
+
+          ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
+          echo "$SSH_KEY" > key.pem
+          chmod 600 key.pem
+          
+          # .env 파일 생성 (프로젝트에 맞는 변수들로 구성)
+          echo "PROJECT_NAME=$PROJECT_NAME" > .env
+          echo "SLACK_BOT_TOKEN=$SLACK_BOT_TOKEN" >> .env
+          echo "SLACK_APP_TOKEN=$SLACK_APP_TOKEN" >> .env
+          echo "TARGET_CHANNEL_ID=$TARGET_CHANNEL_ID" >> .env
+          echo "ECR_REGISTRY=public.ecr.aws/$REGISTRY_ID" >> .env
+          
+          # 서버 디렉토리 생성 (없을 경우 대비)
+          ssh -i key.pem "ubuntu @$HOST" "mkdir -p /home/ubuntu/${PROJECT_NAME}-api"
+          
+          # 파일 전송 (ubuntu @$HOST 형식을 정확히 지킴)
+          scp -i key.pem .env "ubuntu @$HOST:/home/ubuntu/${PROJECT_NAME}-api/.env"
+          scp -i key.pem script/docker-deploy.sh "ubuntu @$HOST:/home/ubuntu/${PROJECT_NAME}-api/docker-deploy.sh"
+          
+          # 배포 스크립트 실행
+          ssh -i key.pem "ubuntu @$HOST" "chmod +x /home/ubuntu/${PROJECT_NAME}-api/docker-deploy.sh"
+          ssh -i key.pem "ubuntu @$HOST" "cd /home/ubuntu/${PROJECT_NAME}-api && \
+            PROJECT_NAME=$PROJECT_NAME \
+            IMAGE_TAG=$LATEST_TAG \
+            ./docker-deploy.sh"
