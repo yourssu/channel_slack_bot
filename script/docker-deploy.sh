@@ -17,8 +17,9 @@ FULL_IMAGE="${ECR_REGISTRY}/yourssu/${PROJECT_NAME}:${IMAGE_TAG}"
 echo "🚀 Starting deployment for ${PROJECT_NAME}..."
 echo "📦 Image: ${FULL_IMAGE}"
 
-# ECR Public 로그인 (인증 속도 제한 방지)
-aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws
+# ECR Public 로그인 (실패해도 배포를 계속하도록 설정)
+# 참고: EC2 IAM Role에 AmazonElasticContainerRegistryPublicReadOnly 권한이 필요합니다.
+aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws || echo "⚠️ ECR login failed, attempting pull without authentication..."
 
 # 새 이미지 풀
 echo "📥 Pulling new image..."
