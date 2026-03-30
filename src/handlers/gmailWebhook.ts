@@ -27,14 +27,15 @@ async function processNewEmails(notification: GmailNotification, env: Env): Prom
   await env.GMAIL_KV.put("lastHistoryId", String(notification.historyId));
 
   for (const messageId of messageIds) {
-    const { subject, from, to, date, cc, rawHtml, attachments } = await getEmailMessage(messageId, env);
+    const { subject, from, to, date, cc, body, rawHtml, attachments } = await getEmailMessage(messageId, env);
 
     // 메일 전문 보기 링크 생성
     let viewLink = "";
-    if (rawHtml) {
+    if (rawHtml || body) {
+      const emailContent = rawHtml || `<pre style="white-space: pre-wrap; font-family: sans-serif;">${body}</pre>`;
       const tokenBytes = crypto.getRandomValues(new Uint8Array(32));
       const token = Array.from(tokenBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-      await env.GMAIL_KV.put(`email:${token}`, rawHtml, { expirationTtl: 86400 });
+      await env.GMAIL_KV.put(`email:${token}`, emailContent, { expirationTtl: 86400 });
       const viewUrl = `https://channel-slack-bot.yourssu-com4234.workers.dev/view/${token}`;
       viewLink = `\n:incoming_envelope: <${viewUrl}|메일 전문 보기> (24시간 동안 열람 가능)`;
     }
