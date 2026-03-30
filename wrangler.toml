@@ -12,6 +12,10 @@ CHANNEL_CREATED_CHANNEL_ID = "C2VPD9PJ7"
 GMAIL_USER_ID = "me"
 PUBSUB_TOPIC_NAME = "projects/authflow-491303/topics/gmail-push"
 
+[[kv_namespaces]]
+binding = "GMAIL_KV"
+id = "50eb96d7fd7449bda0c2fb59a855e42c"
+
 # wrangler secret put으로 등록할 시크릿:
 # SLACK_SIGNING_SECRET
 # SLACK_BOT_TOKEN

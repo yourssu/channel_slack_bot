@@ -47,9 +47,13 @@ export async function registerGmailWatch(env: Env): Promise<void> {
 interface GmailMessage {
   subject: string;
   from: string;
+  to: string;
+  date: string;
+  cc: string;
+  snippet: string;
 }
 
-// messageId로 메일 제목/발신자 조회
+// messageId로 메일 상세 정보 조회
 export async function getEmailMessage(
   messageId: string,
   env: Env
@@ -57,7 +61,7 @@ export async function getEmailMessage(
   const token = await getAccessToken(env);
 
   const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+    `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date&metadataHeaders=Cc`,
     {
       headers: { Authorization: `Bearer ${token}` },
     }
@@ -67,13 +71,20 @@ export async function getEmailMessage(
     throw new Error(`Gmail message error: ${res.status}`);
   }
 
-  const data = await res.json<{ payload: { headers: { name: string; value: string }[] } }>();
+  const data = await res.json<{
+    snippet: string;
+    payload: { headers: { name: string; value: string }[] };
+  }>();
   const headers = data.payload.headers;
 
   const subject = headers.find((h) => h.name === "Subject")?.value ?? "(제목 없음)";
-  const from = headers.find((h) => h.name === "From")?.value ?? "(발신자 없음)";
+  const from    = headers.find((h) => h.name === "From")?.value    ?? "(발신자 없음)";
+  const to      = headers.find((h) => h.name === "To")?.value      ?? "(수신자 없음)";
+  const date    = headers.find((h) => h.name === "Date")?.value    ?? "(날짜 없음)";
+  const cc      = headers.find((h) => h.name === "Cc")?.value      ?? "";
+  const snippet = data.snippet?.slice(0, 100) ?? "";
 
-  return { subject, from };
+  return { subject, from, to, date, cc, snippet };
 }
 
 // historyId 이후 INBOX에 추가된 messageId 목록 조회
@@ -87,20 +98,22 @@ export async function getNewMessageIds(
     `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/history`
   );
   url.searchParams.set("startHistoryId", startHistoryId);
-  url.searchParams.set("historyTypes", "messageAdded");
-  url.searchParams.set("labelId", "INBOX");
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
   });
 
   if (!res.ok) {
+    const errText = await res.text();
+    console.error(`Gmail history error: ${res.status}`, errText);
     throw new Error(`Gmail history error: ${res.status}`);
   }
 
   const data = await res.json<{
     history?: { messagesAdded?: { message: { id: string } }[] }[];
   }>();
+
+  console.log("Gmail history response:", JSON.stringify(data));
 
   if (!data.history) return [];
 

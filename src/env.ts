@@ -13,4 +13,7 @@ export interface Env {
   // Gmail / Pub/Sub
   GMAIL_USER_ID: string;
   PUBSUB_TOPIC_NAME: string;
+
+  // KV
+  GMAIL_KV: KVNamespace;
 }

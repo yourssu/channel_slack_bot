@@ -1,5 +1,8 @@
 # Python
 .env
+
+# Wrangler 로컬 시크릿
+.dev.vars
 __pycache__/
 *.pyc
 

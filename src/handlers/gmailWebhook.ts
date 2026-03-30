@@ -15,18 +15,32 @@ interface GmailNotification {
 }
 
 async function processNewEmails(notification: GmailNotification, env: Env): Promise<void> {
-  // historyId - 1 을 시작점으로 사용해 해당 변경 직전부터 조회
-  const startHistoryId = String(Number(notification.historyId) - 1);
+  const lastHistoryId = await env.GMAIL_KV.get("lastHistoryId");
+  const startHistoryId = lastHistoryId ?? String(Number(notification.historyId) - 1);
+
+  console.log(`startHistoryId: ${startHistoryId}, notificationHistoryId: ${notification.historyId}`);
+
   const messageIds = await getNewMessageIds(startHistoryId, env);
+  console.log(`messageIds: ${JSON.stringify(messageIds)}`);
 
   for (const messageId of messageIds) {
-    const { subject, from } = await getEmailMessage(messageId, env);
-    await postSlackMessage(
-      `📧 새 이메일이 도착했습니다\n*보낸 사람:* ${from}\n*제목:* ${subject}`,
-      env.EMAIL_CHANNEL_ID,
-      env
-    );
+    const { subject, from, to, date, cc, snippet } = await getEmailMessage(messageId, env);
+    const lines = [
+      `📧 새 이메일이 도착했습니다`,
+      `*제목:* ${subject}`,
+      `*보낸 사람:* ${from}`,
+      `*받는 사람:* ${to}`,
+      cc ? `*참조:* ${cc}` : null,
+      `*날짜:* ${date}`,
+      snippet ? `*미리보기:* ${snippet}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    await postSlackMessage(lines, env.EMAIL_CHANNEL_ID, env);
   }
+
+  await env.GMAIL_KV.put("lastHistoryId", String(notification.historyId));
 }
 
 export async function handleGmailWebhook(
@@ -34,13 +48,33 @@ export async function handleGmailWebhook(
   env: Env,
   ctx: ExecutionContext
 ): Promise<Response> {
-  const body = await request.json<PubSubMessage>();
+  try {
+    const rawBody = await request.text();
 
-  // Pub/Sub 메시지 data는 base64 인코딩된 JSON
-  const decoded = atob(body.message.data);
-  const notification: GmailNotification = JSON.parse(decoded);
+    let body: PubSubMessage;
+    try {
+      body = JSON.parse(rawBody);
+    } catch (e) {
+      return new Response("OK", { status: 200 });
+    }
 
-  ctx.waitUntil(processNewEmails(notification, env));
+    if (!body.message?.data) {
+      return new Response("OK", { status: 200 });
+    }
 
-  return new Response("OK", { status: 200 });
+    let notification: GmailNotification;
+    try {
+      const decoded = atob(body.message.data);
+      notification = JSON.parse(decoded);
+    } catch (e) {
+      return new Response("OK", { status: 200 });
+    }
+
+    console.log("Gmail notification:", JSON.stringify(notification));
+    ctx.waitUntil(processNewEmails(notification, env));
+
+    return new Response("OK", { status: 200 });
+  } catch (e) {
+    return new Response("OK", { status: 200 });
+  }
 }
