@@ -50,7 +50,6 @@ async function processNewEmails(notification: GmailNotification, env: Env): Prom
       `*보낸 사람:* ${from}`,
       `*날짜:* ${date}`,
       cc ? `*참조:* ${cc}` : null,
-      `-----------------------------------------------`,
     ]
       .filter(Boolean)
       .join("\n") + viewLink;
