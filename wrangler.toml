@@ -1,0 +1,20 @@
+name = "channel-slack-bot"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 0 */6 * *"]
+
+[vars]
+EMAIL_CHANNEL_ID = "C0APMJ5CNRL"
+CHANNEL_CREATED_CHANNEL_ID = "C2VPD9PJ7"
+GMAIL_USER_ID = "me"
+PUBSUB_TOPIC_NAME = "projects/authflow-491303/topics/gmail-push"
+
+# wrangler secret put으로 등록할 시크릿:
+# SLACK_SIGNING_SECRET
+# SLACK_BOT_TOKEN
+# GOOGLE_CLIENT_ID
+# GOOGLE_CLIENT_SECRET
+# GOOGLE_REFRESH_TOKEN

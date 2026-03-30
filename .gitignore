@@ -1,3 +1,14 @@
+# Python
 .env
 __pycache__/
 *.pyc
+
+# Node
+node_modules/
+dist/
+
+# Wrangler
+.wrangler/
+
+# OS
+.DS_Store
