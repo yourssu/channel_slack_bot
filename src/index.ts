@@ -1,6 +1,7 @@
 import type { Env } from "./env";
 import { handleSlackEvents } from "./handlers/slackEvents";
 import { handleGmailWebhook } from "./handlers/gmailWebhook";
+import { handleEmailView } from "./handlers/emailView";
 import { registerGmailWatch } from "./gmail";
 
 export default {
@@ -13,6 +14,10 @@ export default {
 
     if (request.method === "POST" && pathname === "/gmail/webhook") {
       return handleGmailWebhook(request, env, ctx);
+    }
+
+    if (request.method === "GET" && pathname.startsWith("/view/")) {
+      return handleEmailView(request, env);
     }
 
     return new Response("Not Found", { status: 404 });

@@ -50,10 +50,88 @@ interface GmailMessage {
   to: string;
   date: string;
   cc: string;
-  snippet: string;
+  body: string;
+  rawHtml: string;
+  images: { filename: string; mimeType: string; attachmentId: string }[];
 }
 
-// messageId로 메일 상세 정보 조회
+interface MimePart {
+  mimeType?: string;
+  filename?: string;
+  body?: { data?: string; attachmentId?: string };
+  parts?: MimePart[];
+}
+
+function base64ToText(data: string): string {
+  const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function extractBodyAndImages(payload: MimePart): {
+  body: string;
+  rawHtml: string;
+  images: { filename: string; mimeType: string; attachmentId: string }[];
+} {
+  let plainText = "";
+  let htmlText = "";
+  let rawHtml = "";
+  const images: { filename: string; mimeType: string; attachmentId: string }[] = [];
+
+  function traverse(part: MimePart) {
+    const mime = part.mimeType ?? "";
+
+    if (mime === "text/plain" && part.body?.data && !plainText) {
+      plainText = base64ToText(part.body.data);
+    } else if (mime === "text/html" && part.body?.data && !htmlText) {
+      const html = base64ToText(part.body.data);
+      if (!rawHtml) rawHtml = html;
+      htmlText = html
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<\/div>/gi, "\n")
+        .replace(/<\/tr>/gi, "\n")
+        .replace(/<\/li>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/\[image:[^\]]*\]/g, "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .join("\n")
+        .trim();
+    } else if (mime.startsWith("image/") && part.body?.attachmentId) {
+      images.push({
+        filename: part.filename ?? `image.${mime.split("/")[1]}`,
+        mimeType: mime,
+        attachmentId: part.body.attachmentId,
+      });
+    }
+
+    if (part.parts) part.parts.forEach(traverse);
+  }
+
+  traverse(payload);
+
+  console.log("plainText length:", plainText.length, "htmlText length:", htmlText.length);
+
+  // HTML 버전 우선, 없으면 plain text 사용
+  const body = (htmlText || plainText)
+    .replace(/\[image:[^\]]*\]/g, "")
+    .trim()
+    .slice(0, 3000);
+
+  return { body, rawHtml, images };
+}
+
+// messageId로 메일 상세 정보 조회 (전체 본문 + 이미지 첨부)
 export async function getEmailMessage(
   messageId: string,
   env: Env
@@ -61,30 +139,47 @@ export async function getEmailMessage(
   const token = await getAccessToken(env);
 
   const res = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/messages/${messageId}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date&metadataHeaders=Cc`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    }
+    `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/messages/${messageId}?format=full`,
+    { headers: { Authorization: `Bearer ${token}` } }
   );
 
-  if (!res.ok) {
-    throw new Error(`Gmail message error: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`Gmail message error: ${res.status}`);
 
   const data = await res.json<{
-    snippet: string;
-    payload: { headers: { name: string; value: string }[] };
+    payload: MimePart & { headers: { name: string; value: string }[] };
   }>();
-  const headers = data.payload.headers;
 
+  const headers = data.payload.headers;
   const subject = headers.find((h) => h.name === "Subject")?.value ?? "(제목 없음)";
   const from    = headers.find((h) => h.name === "From")?.value    ?? "(발신자 없음)";
   const to      = headers.find((h) => h.name === "To")?.value      ?? "(수신자 없음)";
   const date    = headers.find((h) => h.name === "Date")?.value    ?? "(날짜 없음)";
   const cc      = headers.find((h) => h.name === "Cc")?.value      ?? "";
-  const snippet = data.snippet?.slice(0, 100) ?? "";
 
-  return { subject, from, to, date, cc, snippet };
+  const { body, rawHtml, images } = extractBodyAndImages(data.payload);
+
+  return { subject, from, to, date, cc, body, rawHtml, images };
+}
+
+// 이미지 첨부파일 바이너리 조회
+export async function getEmailAttachment(
+  messageId: string,
+  attachmentId: string,
+  env: Env
+): Promise<Uint8Array> {
+  const token = await getAccessToken(env);
+
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/messages/${messageId}/attachments/${attachmentId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  if (!res.ok) throw new Error(`Gmail attachment error: ${res.status}`);
+
+  const data = await res.json<{ data: string }>();
+  const base64 = data.data.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(base64);
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
 // historyId 이후 INBOX에 추가된 messageId 목록 조회
