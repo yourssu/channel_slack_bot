@@ -52,13 +52,13 @@ interface GmailMessage {
   cc: string;
   body: string;
   rawHtml: string;
-  images: { filename: string; mimeType: string; attachmentId: string }[];
+  attachments: { filename: string; mimeType: string; attachmentId: string }[];
 }
 
 interface MimePart {
   mimeType?: string;
   filename?: string;
-  body?: { data?: string; attachmentId?: string };
+  body?: { data?: string; attachmentId?: string; size?: number };
   parts?: MimePart[];
 }
 
@@ -69,15 +69,17 @@ function base64ToText(data: string): string {
   return new TextDecoder("utf-8").decode(bytes);
 }
 
-function extractBodyAndImages(payload: MimePart): {
+const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024; // 10MB
+
+function extractBodyAndAttachments(payload: MimePart): {
   body: string;
   rawHtml: string;
-  images: { filename: string; mimeType: string; attachmentId: string }[];
+  attachments: { filename: string; mimeType: string; attachmentId: string }[];
 } {
   let plainText = "";
   let htmlText = "";
   let rawHtml = "";
-  const images: { filename: string; mimeType: string; attachmentId: string }[] = [];
+  const attachments: { filename: string; mimeType: string; attachmentId: string }[] = [];
 
   function traverse(part: MimePart) {
     const mime = part.mimeType ?? "";
@@ -107,12 +109,15 @@ function extractBodyAndImages(payload: MimePart): {
         .filter((line) => line.length > 0)
         .join("\n")
         .trim();
-    } else if (mime.startsWith("image/") && part.body?.attachmentId) {
-      images.push({
-        filename: part.filename ?? `image.${mime.split("/")[1]}`,
-        mimeType: mime,
-        attachmentId: part.body.attachmentId,
-      });
+    } else if (part.filename && part.body?.attachmentId) {
+      const size = part.body.size ?? 0;
+      if (size <= MAX_ATTACHMENT_SIZE) {
+        attachments.push({
+          filename: part.filename,
+          mimeType: mime || "application/octet-stream",
+          attachmentId: part.body.attachmentId,
+        });
+      }
     }
 
     if (part.parts) part.parts.forEach(traverse);
@@ -120,15 +125,13 @@ function extractBodyAndImages(payload: MimePart): {
 
   traverse(payload);
 
-  console.log("plainText length:", plainText.length, "htmlText length:", htmlText.length);
-
   // HTML 버전 우선, 없으면 plain text 사용
   const body = (htmlText || plainText)
     .replace(/\[image:[^\]]*\]/g, "")
     .trim()
     .slice(0, 3000);
 
-  return { body, rawHtml, images };
+  return { body, rawHtml, attachments };
 }
 
 // messageId로 메일 상세 정보 조회 (전체 본문 + 이미지 첨부)
@@ -156,9 +159,9 @@ export async function getEmailMessage(
   const date    = headers.find((h) => h.name === "Date")?.value    ?? "(날짜 없음)";
   const cc      = headers.find((h) => h.name === "Cc")?.value      ?? "";
 
-  const { body, rawHtml, images } = extractBodyAndImages(data.payload);
+  const { body, rawHtml, attachments } = extractBodyAndAttachments(data.payload);
 
-  return { subject, from, to, date, cc, body, rawHtml, images };
+  return { subject, from, to, date, cc, body, rawHtml, attachments };
 }
 
 // 이미지 첨부파일 바이너리 조회

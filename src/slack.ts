@@ -73,7 +73,7 @@ export async function postSlackThreadMessage(
   if (!res.ok) throw new Error(`Slack thread API error: ${res.status}`);
 }
 
-// 스레드에 이미지 업로드
+// 스레드에 파일 업로드
 export async function uploadImageToSlack(
   filename: string,
   mimeType: string,

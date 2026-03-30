@@ -27,7 +27,7 @@ async function processNewEmails(notification: GmailNotification, env: Env): Prom
   await env.GMAIL_KV.put("lastHistoryId", String(notification.historyId));
 
   for (const messageId of messageIds) {
-    const { subject, from, to, date, cc, rawHtml, images } = await getEmailMessage(messageId, env);
+    const { subject, from, to, date, cc, rawHtml, attachments } = await getEmailMessage(messageId, env);
 
     // 메일 전문 보기 링크 생성
     let viewLink = "";
@@ -39,27 +39,31 @@ async function processNewEmails(notification: GmailNotification, env: Env): Prom
       viewLink = `\n:incoming_envelope: <${viewUrl}|메일 전문 보기> (24시간 동안 열람 가능)`;
     }
 
+    // 받는 사람에서 이메일 주소만 추출 ("Name <email>" → "email")
+    const toEmail = to.match(/<([^>]+)>/)?.[1] ?? to;
+
     // 메인 메시지
     const summary = [
-      `*📧 새 이메일이 도착했습니다*`,
+      `*📧 새 이메일이 도착했습니다(${toEmail})*`,
+      `----------`,
       `*제목:* ${subject}`,
       `*보낸 사람:* ${from}`,
       `*날짜:* ${date}`,
-      `*받는 사람:* ${to}`,
       cc ? `*참조:* ${cc}` : null,
+      `----------`,
     ]
       .filter(Boolean)
       .join("\n") + viewLink;
 
     const threadTs = await postSlackMessage(summary, env.EMAIL_CHANNEL_ID, env);
 
-    // 스레드: 이미지 첨부파일
-    for (const image of images) {
+    // 스레드: 첨부파일 업로드
+    for (const attachment of attachments) {
       try {
-        const data = await getEmailAttachment(messageId, image.attachmentId, env);
-        await uploadImageToSlack(image.filename, image.mimeType, data, env.EMAIL_CHANNEL_ID, threadTs, env);
+        const data = await getEmailAttachment(messageId, attachment.attachmentId, env);
+        await uploadImageToSlack(attachment.filename, attachment.mimeType, data, env.EMAIL_CHANNEL_ID, threadTs, env);
       } catch (e) {
-        console.error(`Image upload failed: ${image.filename}`, e);
+        console.error(`Attachment upload failed: ${attachment.filename}`, e);
       }
     }
   }
