@@ -44,13 +44,13 @@ async function processNewEmails(notification: GmailNotification, env: Env): Prom
 
     // 메인 메시지
     const summary = [
+      `-----------------------------------------------`,
       `*📧 새 이메일이 도착했습니다(${toEmail})*`,
-      `----------`,
       `*제목:* ${subject}`,
       `*보낸 사람:* ${from}`,
       `*날짜:* ${date}`,
       cc ? `*참조:* ${cc}` : null,
-      `----------`,
+      `-----------------------------------------------`,
     ]
       .filter(Boolean)
       .join("\n") + viewLink;
