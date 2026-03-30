@@ -10,8 +10,8 @@ Slack 채널 생성 알림과 Gmail 수신 알림을 하나의 Cloudflare Worker
 ## 아키텍처
 
 ```
-Slack channel_created → POST /slack/events  ─┐
-                                              ├─ CF Worker ──→ Slack chat.postMessage
+Slack channel_created → POST /slack/events        ─┐
+                                                   ├─ CF Worker ──→ Slack chat.postMessage
 Gmail 수신 → Google Pub/Sub → POST /gmail/webhook ─┘
 
 Cron (6일마다) → Gmail watch 자동 갱신
