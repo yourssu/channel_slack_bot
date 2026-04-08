@@ -4,7 +4,7 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 [triggers]
-crons = ["0 0 */6 * *"]
+crons = ["0 0 */6 * *", "0 0 * * *"]
 
 [vars]
 EMAIL_CHANNEL_ID = "C0APMJ5CNRL"

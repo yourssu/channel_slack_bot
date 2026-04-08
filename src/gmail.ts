@@ -187,6 +187,19 @@ export async function getEmailAttachment(
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
+// OAuth 및 Gmail API 정상 여부 확인
+export async function checkGmailHealth(env: Env): Promise<void> {
+  const token = await getAccessToken(env);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/profile`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Gmail API error: ${res.status} ${errText}`);
+  }
+}
+
 // historyId 이후 INBOX에 추가된 messageId 목록 조회
 export async function getNewMessageIds(
   startHistoryId: string,
