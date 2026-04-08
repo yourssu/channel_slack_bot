@@ -97,7 +97,11 @@ export async function handleGmailWebhook(
     }
 
     console.log("Gmail notification:", JSON.stringify(notification));
-    ctx.waitUntil(processNewEmails(notification, env));
+    ctx.waitUntil(
+      processNewEmails(notification, env).catch((e) =>
+        console.error("processNewEmails error:", e)
+      )
+    );
 
     return new Response("OK", { status: 200 });
   } catch (e) {

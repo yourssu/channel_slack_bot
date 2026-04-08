@@ -14,7 +14,7 @@ Slack channel_created → POST /slack/events        ─┐
                                                    ├─ CF Worker ──→ Slack chat.postMessage
 Gmail 수신 → Google Pub/Sub → POST /gmail/webhook ─┘
 
-Cron (6일마다) → Gmail watch 자동 갱신
+Cron (6시간마다) → Gmail watch 자동 갱신
 ```
 
 ## 프로젝트 구조
@@ -163,6 +163,52 @@ curl -X POST https://gmail.googleapis.com/gmail/v1/users/me/watch \
 
 ## 주의사항
 
-- Gmail `watch()`는 **7일마다 만료**됩니다. Cron Trigger가 6일마다 자동 갱신합니다.
+- Gmail `watch()`는 **7일마다 만료**됩니다. Cron Trigger가 6시간마다 자동 갱신합니다.
 - Slack Events API는 **3초 내 응답**을 요구합니다. 외부 API 호출은 모두 `ctx.waitUntil()`로 백그라운드 처리됩니다.
 - Google Pub/Sub는 **최소 1회 전달(at-least-once)** 을 보장하므로 중복 알림이 발생할 수 있습니다.
+
+## 트러블슈팅
+
+### 이메일 알림이 Slack에 오지 않는 경우
+
+**1단계: Worker 로그 확인**
+
+```bash
+npx wrangler tail --format pretty
+```
+
+로그가 전혀 찍히지 않는다면 Gmail watch 또는 Pub/Sub 문제입니다. 로그가 찍히면 에러 메시지를 확인합니다.
+
+**2단계: 웹훅 엔드포인트 직접 테스트**
+
+```bash
+# historyId는 KV에 저장된 lastHistoryId 값 사용
+curl -X POST https://<worker-url>/gmail/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"message":{"data":"<base64-encoded-notification>","messageId":"test"}}'
+```
+
+---
+
+### Google OAuth error: 400
+
+**원인**: `GOOGLE_REFRESH_TOKEN`이 만료 또는 무효화됨.
+
+가장 흔한 원인은 Google Cloud 프로젝트의 **OAuth 동의 화면이 "테스트" 모드**인 경우입니다. 테스트 모드에서는 Refresh Token이 **7일마다 자동 만료**됩니다.
+
+**해결 방법**
+
+1. [Google Cloud Console](https://console.cloud.google.com) → **OAuth 동의 화면** → 앱 상태가 "테스트"이면 **"프로덕션으로 게시"** 클릭
+
+2. [OAuth Playground](https://developers.google.com/oauthplayground/) 에서 Refresh Token 재발급
+   - 우상단 ⚙️ → "Use your own OAuth credentials" 체크 → Client ID / Secret 입력
+   - 스코프: `https://www.googleapis.com/auth/gmail.readonly`
+   - **Step 2**: Exchange authorization code for tokens → `refresh_token` 복사
+
+3. Worker 시크릿 갱신
+
+   ```bash
+   npx wrangler secret put GOOGLE_REFRESH_TOKEN
+   ```
+
+> **참고**: 구글 앱 비밀번호(App Password)는 IMAP/SMTP 전용이며 Gmail REST API에서는 사용 불가합니다. Service Account 방식은 Google Workspace(도메인 계정)에서만 지원됩니다.

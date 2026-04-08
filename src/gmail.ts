@@ -13,6 +13,8 @@ async function getAccessToken(env: Env): Promise<string> {
   });
 
   if (!res.ok) {
+    const errBody = await res.text();
+    console.error(`Google OAuth error: ${res.status}`, errBody);
     throw new Error(`Google OAuth error: ${res.status}`);
   }
 
@@ -196,6 +198,8 @@ export async function getNewMessageIds(
     `https://gmail.googleapis.com/gmail/v1/users/${env.GMAIL_USER_ID}/history`
   );
   url.searchParams.set("startHistoryId", startHistoryId);
+  url.searchParams.set("labelId", "INBOX");
+  url.searchParams.append("historyTypes", "messageAdded");
 
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${token}` },
