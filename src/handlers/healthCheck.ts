@@ -16,7 +16,7 @@ export async function runHealthCheck(env: Env): Promise<void> {
       : "";
 
     await postSlackMessage(
-      `🚨 *Gmail 수신 이상 감지*\n\n*오류:* ${message}${detail}`,
+      `🚨 *Gmail 수신 이상 감지*\n\n*오류:* ${message}${detail}\n\n*레포:* <https://github.com/yourssu/channel_slack_bot|yourssu/channel_slack_bot>`,
       env.EMAIL_CHANNEL_ID,
       env
     ).catch((slackErr) => console.error("Slack notification failed:", slackErr));
