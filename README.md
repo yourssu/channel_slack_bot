@@ -190,25 +190,50 @@ curl -X POST https://<worker-url>/gmail/webhook \
 
 ---
 
-### Google OAuth error: 400
+### Google OAuth error: 400 / 401
 
 **원인**: `GOOGLE_REFRESH_TOKEN`이 만료 또는 무효화됨.
 
-가장 흔한 원인은 Google Cloud 프로젝트의 **OAuth 동의 화면이 "테스트" 모드**인 경우입니다. 테스트 모드에서는 Refresh Token이 **7일마다 자동 만료**됩니다.
+| 에러 코드 | 원인 |
+|-----------|------|
+| `400 invalid_grant` | Refresh Token 만료 (OAuth 앱이 테스트 모드이면 7일마다 만료) |
+| `401 unauthorized_client` | Refresh Token이 다른 Client ID로 발급됨 |
 
 **해결 방법**
 
-1. [Google Cloud Console](https://console.cloud.google.com) → **OAuth 동의 화면** → 앱 상태가 "테스트"이면 **"프로덕션으로 게시"** 클릭
+**1. OAuth 동의 화면을 프로덕션으로 게시**
 
-2. [OAuth Playground](https://developers.google.com/oauthplayground/) 에서 Refresh Token 재발급
-   - 우상단 ⚙️ → "Use your own OAuth credentials" 체크 → Client ID / Secret 입력
-   - 스코프: `https://www.googleapis.com/auth/gmail.readonly`
-   - **Step 2**: Exchange authorization code for tokens → `refresh_token` 복사
+[Google Cloud Console](https://console.cloud.google.com) → **API 및 서비스** → **OAuth 동의 화면** → 앱 상태가 "테스트"이면 **"프로덕션으로 게시"** 클릭.
+테스트 모드에서는 Refresh Token이 7일마다 자동 만료됨.
 
-3. Worker 시크릿 갱신
+**2. Web Application 타입 OAuth 클라이언트 생성**
 
-   ```bash
-   npx wrangler secret put GOOGLE_REFRESH_TOKEN
-   ```
+OAuth Playground에서 Refresh Token을 발급하려면 **Web Application** 타입 클라이언트가 필요합니다. Desktop App 타입은 Playground의 리다이렉트 URI를 등록할 수 없습니다.
+
+- **사용자 인증 정보** → **+ 사용자 인증 정보 만들기** → **OAuth 클라이언트 ID**
+- 애플리케이션 유형: **웹 애플리케이션**
+- 승인된 리디렉션 URI 추가: `https://developers.google.com/oauthplayground`
+- 저장 후 Client ID / Client Secret 복사
+
+**3. OAuth Playground에서 Refresh Token 재발급**
+
+1. [OAuth Playground](https://developers.google.com/oauthplayground/) 접속
+2. 우상단 ⚙️ → **"Use your own OAuth credentials"** 체크
+3. 위에서 만든 **Web Application** Client ID / Secret 입력
+4. 스코프: `https://www.googleapis.com/auth/gmail.readonly` → **Authorize APIs**
+5. **Step 2**: Exchange authorization code for tokens → `refresh_token` 복사
+
+**4. Worker 시크릿 3개 갱신**
+
+```bash
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put GOOGLE_REFRESH_TOKEN
+```
+
+**5. Gmail watch 수동 갱신**
+
+시크릿 갱신 후 Cron이 실행되기 전에는 watch가 만료된 상태이므로 직접 갱신합니다.
+`index.ts`에 임시 엔드포인트를 추가하거나 Cron이 실행될 때까지 대기합니다.
 
 > **참고**: 구글 앱 비밀번호(App Password)는 IMAP/SMTP 전용이며 Gmail REST API에서는 사용 불가합니다. Service Account 방식은 Google Workspace(도메인 계정)에서만 지원됩니다.
